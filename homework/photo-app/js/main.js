@@ -21,13 +21,14 @@ const showProfile = async () => {
 }
 
 const suggestionsToHTML = (suggested) => {
-    return `<section class="suggesteduser">
+    return `<section id="suggesteduser_${suggested.id}" class="suggesteduser">
                 <img src="${suggested.thumb_url}">
                 <ul>
                     <li class="upper">${suggested.username}</li>
                     <li class="lower">suggested for you</li>
                 </ul>
-                <button class="buttons"><span class="followbutton">follow</span></button>
+                <button class="buttons followbutton" aria-checked="false" 
+                    data-userid="${suggested.id}" onclick="toggleFollow(this)">follow</button>
             </section>`
 }
 
@@ -40,6 +41,7 @@ const showSuggested = async () => {
         }
     })
     const data = await response.json();
+    console.log(data);
     const htmlChunk = data.map(suggestionsToHTML).join('');
     document.querySelector('#suggestedusers').innerHTML = htmlChunk;
 }
@@ -60,6 +62,7 @@ const showStories = async () => {
         }
     })
     const data = await response.json();
+    console.log(data);
     const htmlChunk = data.map(storyToHTML).join('');
     document.querySelector('#storiespanel').innerHTML = htmlChunk;
 }
@@ -131,12 +134,12 @@ const postToHTML = (post, i) => {
             <img src="${post.image_url}" alt="">
             <section class="iconsrow">
                 <section id="left">
-                    <button class="buttons" onclick="${post.current_user_like_id ? deleteLike(post) : postLike(post)}"><i class="${post.current_user_like_id ? 'fas fa-heart' : 'far fa-heart'}"></i></button>
+                    <button class="buttons" ${post.current_user_like_id ? 'aria-label="liked" aria-checked="true"' : 'aria-label="unliked" aria-checked="false"'} onclick="${post.current_user_like_id ? `deleteLike(${post.id}, ${post.current_user_like_id})` : `postLike(${post.id})`}"><i class="${post.current_user_like_id ? 'fas fa-heart' : 'far fa-heart'}"></i></button>
                     <button class="buttons"><i class="far fa-comment"></i></button>
                     <button class="buttons"><i class="far fa-paper-plane"></i></button>
                 </section
                 <section id="right">
-                <button class="buttons"><i class="${post.current_user_bookmark_id ? 'fas fa-bookmark' : 'far fa-bookmark'}"></i></button>
+                <button class="buttons" ${post.current_user_bookmark_id ? 'aria-label="bookmarked" aria-checked="true"' : 'aria-label="unbookmarked" aria-checked="false"'} onclick="${post.current_user_bookmark_id ? `deleteBookmark(${post.id}, ${post.current_user_bookmark_id})` : `postBookmark(${post.id})`}"><i class="${post.current_user_bookmark_id ? 'fas fa-bookmark' : 'far fa-bookmark'}"></i></button>
                 </section>
             </section>
             <span class="likesrow">${post.likes.length} likes</span>
@@ -150,7 +153,7 @@ const postToHTML = (post, i) => {
                     <button class="buttons"></button><i class="far fa-smile"></i>
                     <input class="addcomment" placeholder="Add a comment..." value="">
                 </section>
-                <button class="buttons"><span class="sendpost">Post</span></button>
+                <button class="buttons" onclick="postComment(${post.id}, document.querySelector('.addcomment').value)"><span class="sendpost">Post</span></button>
             </section>
             </article>`
 }
@@ -179,7 +182,53 @@ const targetElementAndReplace = (selector, newHTML) => {
     oldEl.parentElement.replaceChild(newEl, oldEl);
 }
 
-const requeryRedraw = async (postId) => {
+window.toggleFollow = (button) => {
+    if(button.getAttribute('aria-checked') == 'false') {
+        postFollow(button);
+    } else {
+        deleteFollow(button);
+    }
+}
+
+window.postFollow = async (button) => {
+    const userId = button.getAttribute('data-userid');
+    const endpoint = `${rootURL}/api/following`;
+    const postData = {
+        'user_id': userId
+    };
+    const repsonse = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + token
+        },
+        body: JSON.stringify(postData)
+    })
+    const data = await repsonse.json();
+    console.log(button);
+    button.innerHTML = 'unfollow';
+    button.setAttribute('data-followid', data.id);
+    button.setAttribute('aria-checked', 'true');
+}
+
+window.deleteFollow = async (button) => {
+    const followId = button.getAttribute('data-followid');
+    const endpoint = `${rootURL}/api/following/${followId}`;
+    const response = await fetch(endpoint, {
+        method: "DELETE",
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + token
+        }
+    })
+    const data = await response.json();
+    console.log(button);
+    button.innerHTML = 'follow';
+    button.removeAttribute('data-followid');
+    button.setAttribute('aria-checked', 'false');
+}
+
+const postRequeryRedraw = async (postId) => {
     const endpoint = `${rootURL}/api/posts/${postId}`;
     const response = await fetch(endpoint, {
         headers: {
@@ -192,10 +241,10 @@ const requeryRedraw = async (postId) => {
     targetElementAndReplace(`#post_${postId}`, htmlString);
 }
 
-window.postLike = async (post) => {
+window.postLike = async (postId) => {
     const endpoint = `${rootURL}/api/posts/likes/`;
     const postData = {
-        'post_id': post.id
+        'post_id': postId
     };
     const repsonse = await fetch(endpoint, {
         method: 'POST',
@@ -206,11 +255,11 @@ window.postLike = async (post) => {
         body: JSON.stringify(postData)
     })
     const data = await repsonse.json();
-    requeryRedraw(post.id);
+    postRequeryRedraw(postId);
 }
 
-window.deleteLike = async (post) => {
-    const endpoint = `${rootURL}/api/posts/likes/${post.current_user_like_id}`;
+window.deleteLike = async (postId, likeId) => {
+    const endpoint = `${rootURL}/api/posts/likes/${likeId}`;
     const response = await fetch(endpoint, {
         method: "DELETE",
         headers: {
@@ -219,7 +268,55 @@ window.deleteLike = async (post) => {
         }
     })
     const data = await response.json();
-    requeryRedraw(post.id);
+    postRequeryRedraw(postId);
+}
+
+window.postBookmark = async (postId) => {
+    const endpoint = `${rootURL}/api/bookmarks/`;
+    const postData = {
+        'post_id': postId
+    };
+    const repsonse = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + token
+        },
+        body: JSON.stringify(postData)
+    })
+    const data = await repsonse.json();
+    postRequeryRedraw(postId);
+}
+
+window.deleteBookmark = async (postId, bookmarkId) => {
+    const endpoint = `${rootURL}/api/bookmarks/${bookmarkId}`;
+    const response = await fetch(endpoint, {
+        method: "DELETE",
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + token
+        }
+    })
+    const data = await response.json();
+    postRequeryRedraw(postId);
+}
+
+window.postComment = async (postId, text) => {
+    const endpoint = `${rootURL}/api/comments`;
+    const postData = {
+        'post_id': postId,
+        'text': text
+    };
+    const repsonse = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + token
+        },
+        body: JSON.stringify(postData)
+    })
+    const data = await repsonse.json();
+    postRequeryRedraw(postId);
 }
 
 const initPage = async () => {
