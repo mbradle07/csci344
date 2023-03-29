@@ -1,4 +1,8 @@
-import React, { useState } from "react";
+/**
+ * The job of Carousel is to display all of the images in a gallery.
+ */
+
+import React, { useState} from "react";
 export default function Carousel({title, gallery}) {
     //create a state variable to trigger the Reacet screen redraw functionality:
     const [index, setIndex] = useState(0);
