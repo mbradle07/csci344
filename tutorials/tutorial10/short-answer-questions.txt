@@ -1,8 +1,8 @@
 Please answer the following two questions:
 
 1. What is a join (just in your own words) and why is it useful?
+A join or inner join is the resulting rows from two or more tables that have column values that match. It is useful because it displays the relationship between to different tables in a dataset that makes sense.
 
 
 
-
-2. Consider the structure of the posts table: why would you want to use a foreign key (user_id) to the users table instead of storing the username, first_name, and last_name in the posts table?
+2. Consider the structure of the posts table: why would you want to use a foreign key (user_id) to the users table instead of storing the username, first_name, and last_name in the posts table? You would want to use a foreign key to the users table to create a relation between the posts table and the users table, possibly speeding up queries. 
