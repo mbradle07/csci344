@@ -6,19 +6,42 @@ import json
 def get_path():
     return request.host_url + 'api/posts/'
 
+def get_list_of_user_ids_in_my_network(user_id):
+        following = Following.query.filter_by(user_id=user_id).all()
+        me_and_my_friend_ids = [rec.following_id for rec in following]
+        me_and_my_friend_ids.append(user_id)
+        return me_and_my_friend_ids
+
 class FollowingListEndpoint(Resource):
     def __init__(self, current_user):
         self.current_user = current_user
     
     def get(self):
         # return all of the "following" records that the current user is following
-        return Response(json.dumps([]), mimetype="application/json", status=200)
+        followings = Following.query.filter_by(user_id=self.current_user.id).all()
+        return Response(json.dumps([following.to_dict_following() for following in followings]), mimetype="application/json", status=200)
 
     def post(self):
         # create a new "following" record based on the data posted in the body 
         body = request.get_json()
-        print(body)
-        return Response(json.dumps({}), mimetype="application/json", status=201)
+        if not body.get('user_id'):
+            return Response(json.dumps({'error': 'post_id required'}), status=400)
+        all_users = Following.query.all()
+        all_users_ids = [user.user_id for user in all_users]
+        if str(body.get('user_id')).isdigit() == False :
+            return Response(json.dumps({'error': 'user does not exist.'}), mimetype="application/json", status=400)
+        if body.get('user_id') not in all_users_ids :
+            return Response(json.dumps({'error': 'user does not exist.'}), mimetype="application/json", status=404)
+        me_and_my_friend_ids = get_list_of_user_ids_in_my_network(self.current_user.id)
+        if body.get('user_id') in me_and_my_friend_ids :
+                return Response(json.dumps({'error': 'already following.'}), mimetype="application/json", status=400)
+        new_following = Following(
+            user_id=self.current_user.id,
+            following_id=body.get('user_id')
+        )
+        db.session.add(new_following)                
+        db.session.commit()
+        return Response(json.dumps(new_following.to_dict_following()), mimetype="application/json", status=201)
 
 class FollowingDetailEndpoint(Resource):
     def __init__(self, current_user):
@@ -26,11 +49,24 @@ class FollowingDetailEndpoint(Resource):
     
     def delete(self, id):
         # delete "following" record where "id"=id
-        print(id)
-        return Response(json.dumps({}), mimetype="application/json", status=200)
-
-
-
+        try :
+            followingID=int(id)
+            following=Following.query.get(id)
+            me_and_my_friend_ids = get_list_of_user_ids_in_my_network(self.current_user.id)
+            if following is None or following.following_id not in me_and_my_friend_ids :
+                error_message = {
+                    'error': 'following {0} does not exist.'.format(id)
+                }
+                return Response(json.dumps(error_message), mimetype="application/json", status=404)
+            else :
+                Following.query.filter_by(id=id).delete()
+                db.session.commit()
+                return Response(json.dumps({}), mimetype="application/json", status=200)
+        except :
+            error_message = {
+                'error': 'following {0} does not exist.'.format(id)
+            }
+            return Response(json.dumps(error_message), mimetype="application/json", status=404)
 
 def initialize_routes(api):
     api.add_resource(

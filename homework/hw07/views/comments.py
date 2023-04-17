@@ -1,7 +1,13 @@
 from flask import Response, request
 from flask_restful import Resource
 import json
-from models import db, Comment, Post
+from models import db, Comment, Post, Following
+
+def get_list_of_user_ids_in_my_network(user_id):
+        following = Following.query.filter_by(user_id=user_id).all()
+        me_and_my_friend_ids = [rec.following_id for rec in following]
+        me_and_my_friend_ids.append(user_id)
+        return me_and_my_friend_ids
 
 class CommentListEndpoint(Resource):
 
@@ -11,8 +17,30 @@ class CommentListEndpoint(Resource):
     def post(self):
         # create a new "Comment" based on the data posted in the body 
         body = request.get_json()
-        print(body)
-        return Response(json.dumps({}), mimetype="application/json", status=201)
+        if not body.get('text'):
+            return Response(json.dumps({'error': 'text required'}), status=400)
+        try :
+            postID = int(body.get('post_id'))
+            post = Post.query.get(postID)
+            me_and_my_friend_ids = get_list_of_user_ids_in_my_network(self.current_user.id)
+            if post is None or post.user_id not in me_and_my_friend_ids :
+                error_message = {
+                    'error': 'post {0} does not exist.'.format(postID)
+                }
+                return Response(json.dumps(error_message), mimetype="application/json", status=404)
+            else :
+                print(body)
+                new_comment = Comment(
+                    text=body.get('text'),
+                    post_id=body.get('post_id'),
+                    user_id=self.current_user.id
+                )
+                db.session.add(new_comment)                
+                db.session.commit()
+                return Response(json.dumps(new_comment.to_dict()), mimetype="application/json", status=201)
+        except :
+                return Response(json.dumps({'error': 'post_id required'}), status=400)
+
         
 class CommentDetailEndpoint(Resource):
 
@@ -21,8 +49,24 @@ class CommentDetailEndpoint(Resource):
   
     def delete(self, id):
         # delete "Comment" record where "id"=id
-        print(id)
-        return Response(json.dumps({}), mimetype="application/json", status=200)
+        try :
+            commentID = int(id)
+            comment = Comment.query.get(id)
+            me_and_my_friend_ids = get_list_of_user_ids_in_my_network(self.current_user.id)
+            if comment is None or comment.user_id not in me_and_my_friend_ids :
+                error_message = {
+                    'error': 'comment {0} does not exist.'.format(id)
+                }
+                return Response(json.dumps(error_message), mimetype="application/json", status=404)
+            else :
+                Comment.query.filter_by(id=id).delete()
+                db.session.commit()
+                return Response(json.dumps({}), mimetype="application/json", status=200)
+        except :
+            error_message = {
+                'error': 'comment {0} does not exist.'.format(id)
+            }
+            return Response(json.dumps(error_message), mimetype="application/json", status=404)
 
 
 def initialize_routes(api):

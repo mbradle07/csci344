@@ -21,6 +21,9 @@ root_url = 'http://127.0.0.1:5000'
 connection_string = os.environ.get('DB_URL')
 db = create_engine(connection_string, pool_size=10, max_overflow=0)
 
+def get_post_that_user_cannot_edit_delete(user_id):
+    return get_post_that_user_cannot_access(user_id)
+
 def _zip(columns, rows, single_object=True):
     results = []
     for row in rows:

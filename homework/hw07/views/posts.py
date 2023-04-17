@@ -41,8 +41,18 @@ class PostListEndpoint(Resource):
     def post(self):
         # create a new post based on the data posted in the body 
         body = request.get_json()
-        print(body)  
-        return Response(json.dumps({}), mimetype="application/json", status=201)
+        if not body.get('image_url'):
+            return Response(json.dumps({'error': 'image_url required'}), status=400)
+        print(body)
+        new_post = Post(
+            image_url=body.get('image_url'),
+            user_id=self.current_user.id, # must be a valid user_id or will throw an error
+            caption=body.get('caption'),
+            alt_text=body.get('alt_text')
+        )
+        db.session.add(new_post)    # issues the insert statement
+        db.session.commit()
+        return Response(json.dumps(new_post.to_dict()), mimetype="application/json", status=201)
     
 def get_list_of_user_ids_in_my_network(user_id):
     following = Following.query.filter_by(user_id=user_id).all()
@@ -59,13 +69,45 @@ class PostDetailEndpoint(Resource):
     def patch(self, id):
         # update post based on the data posted in the body 
         body = request.get_json()
-        print(body)       
-        return Response(json.dumps({}), mimetype="application/json", status=200)
+        print(body)   
+        post = Post.query.get(id)
+        me_and_my_friend_ids = get_list_of_user_ids_in_my_network(self.current_user.id)
+        if post is None or post.user_id not in me_and_my_friend_ids :
+            error_message = {
+                'error': 'post {0} does not exist.'.format(id)
+            }
+            return Response(json.dumps(error_message), mimetype="application/json", status=404)
+        else :
+            if body.get('image_url'):
+                post.image_url = body.get('image_url')   
+            if body.get('caption'):
+                post.caption = body.get('caption') 
+            if body.get('alt_text'):
+                post.alt_text = body.get('alt_text') 
+            db.session.commit()
+            return Response(json.dumps(post.to_dict()), mimetype="application/json", status=200)
 
 
     def delete(self, id):
         # delete post where "id"=id
-        return Response(json.dumps({}), mimetype="application/json", status=200)
+        try :
+            postID = int(id)
+            post = Post.query.get(id)
+            me_and_my_friend_ids = get_list_of_user_ids_in_my_network(self.current_user.id)
+            if post is None or post.user_id not in me_and_my_friend_ids :
+                error_message = {
+                    'error': 'post {0} does not exist.'.format(id)
+                }
+                return Response(json.dumps(error_message), mimetype="application/json", status=404)
+            else :
+                Post.query.filter_by(id=id).delete()
+                db.session.commit()
+                return Response(json.dumps({}), mimetype="application/json", status=200)
+        except :
+            error_message = {
+                'error': 'post {0} does not exist.'.format(id)
+            }
+            return Response(json.dumps(error_message), mimetype="application/json", status=404)
 
 
     def get(self, id):

@@ -1,7 +1,13 @@
 from flask import Response, request
 from flask_restful import Resource
-from models import Bookmark, db
+from models import Bookmark, Post, Following, db
 import json
+
+def get_list_of_user_ids_in_my_network(user_id):
+        following = Following.query.filter_by(user_id=user_id).all()
+        me_and_my_friend_ids = [rec.following_id for rec in following]
+        me_and_my_friend_ids.append(user_id)
+        return me_and_my_friend_ids
 
 class BookmarksListEndpoint(Resource):
 
@@ -10,13 +16,30 @@ class BookmarksListEndpoint(Resource):
     
     def get(self):
         # get all bookmarks owned by the current user
-        return Response(json.dumps([]), mimetype="application/json", status=200)
+        bookmarks = Bookmark.query.filter_by(user_id=self.current_user.id).all()
+        return Response(json.dumps([bookmark.to_dict() for bookmark in bookmarks]), mimetype="application/json", status=200)
 
     def post(self):
         # create a new "bookmark" based on the data posted in the body 
         body = request.get_json()
-        print(body)
-        return Response(json.dumps({}), mimetype="application/json", status=201)
+        if not body.get('post_id'):
+            return Response(json.dumps({'error': 'post_id required'}), status=400)
+        if str(body.get('post_id')).isdigit() == False :
+            return Response(json.dumps({'error': 'post does not exist.'}), mimetype="application/json", status=400)
+        all_your_bookmarks = Bookmark.query.filter_by(user_id=self.current_user.id).all()
+        bookmarks = [bookmark.post_id for bookmark in all_your_bookmarks]
+        me_and_my_friend_ids = get_list_of_user_ids_in_my_network(self.current_user.id)
+        if body.get('post_id') in bookmarks :
+            return Response(json.dumps({'error': 'bookmark already exist.'}), mimetype="application/json", status=400)
+        if Post.query.get(body.get('post_id')) is None or Post.query.get(body.get('post_id')).user_id not in me_and_my_friend_ids :
+            return Response(json.dumps({'error': 'post does not exist.'}), mimetype="application/json", status=404)
+        new_bookmark = Bookmark(
+            post_id=body.get('post_id'),
+            user_id=self.current_user.id
+        )
+        db.session.add(new_bookmark)                
+        db.session.commit()
+        return Response(json.dumps(new_bookmark.to_dict()), mimetype="application/json", status=201)
 
 class BookmarkDetailEndpoint(Resource):
 
@@ -26,9 +49,24 @@ class BookmarkDetailEndpoint(Resource):
     def delete(self, id):
         # delete "bookmark" record where "id"=id
         print(id)
-        return Response(json.dumps({}), mimetype="application/json", status=200)
-
-
+        try :
+            bookmarkID=int(id)
+            bookmark = Bookmark.query.get(id)
+            me_and_my_friend_ids = get_list_of_user_ids_in_my_network(self.current_user.id)
+            if bookmark is None or bookmark.user_id not in me_and_my_friend_ids :
+                error_message = {
+                    'error': 'bookmark {0} does not exist.'.format(id)
+                }
+                return Response(json.dumps(error_message), mimetype="application/json", status=404)
+            else :
+                Bookmark.query.filter_by(id=id).delete()
+                db.session.commit()
+                return Response(json.dumps({}), mimetype="application/json", status=200)
+        except :
+            error_message = {
+                'error': 'bookmark {0} does not exist.'.format(id)
+            }
+            return Response(json.dumps(error_message), mimetype="application/json", status=404)
 
 def initialize_routes(api):
     api.add_resource(

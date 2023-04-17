@@ -1,7 +1,13 @@
 from flask import Response, request
 from flask_restful import Resource
-from models import LikePost, db
+from models import LikePost, Following, db
 import json
+
+def get_list_of_user_ids_in_my_network(user_id):
+        following = Following.query.filter_by(user_id=user_id).all()
+        me_and_my_friend_ids = [rec.following_id for rec in following]
+        me_and_my_friend_ids.append(user_id)
+        return me_and_my_friend_ids
 
 class PostLikesListEndpoint(Resource):
 
@@ -11,8 +17,31 @@ class PostLikesListEndpoint(Resource):
     def post(self):
         # create a new "like_post" based on the data posted in the body 
         body = request.get_json()
-        print(body)
-        return Response(json.dumps({}), mimetype="application/json", status=201)
+        all_your_likes = LikePost.query.filter_by(user_id=self.current_user.id).all()
+        likes = [like.post_id for like in all_your_likes]
+        if body.get('post_id') in likes :
+            return Response(json.dumps({'error': 'like already exist.'}), mimetype="application/json", status=400)
+        try :
+            likeID = int(body.get('post_id'))
+            like = LikePost.query.get(likeID)
+            me_and_my_friend_ids = get_list_of_user_ids_in_my_network(self.current_user.id)
+            if like is None or like.user_id not in me_and_my_friend_ids :
+                error_message = {
+                    'error': 'like {0} does not exist.'.format(likeID)
+                }
+                return Response(json.dumps(error_message), mimetype="application/json", status=404)
+            new_like = LikePost(
+                user_id=self.current_user.id,
+                post_id=body.get('post_id')
+            )
+            db.session.add(new_like)                
+            db.session.commit()
+            return Response(json.dumps(new_like.to_dict()), mimetype="application/json", status=201)
+        except :
+            error_message = {
+                'error': 'like {0} is invalid.'.format(body.get('post_id'))
+            }
+            return Response(json.dumps(error_message), mimetype="application/json", status=400)
 
 class PostLikesDetailEndpoint(Resource):
 
@@ -21,10 +50,24 @@ class PostLikesDetailEndpoint(Resource):
     
     def delete(self, id):
         # delete "like_post" where "id"=id
-        print(id)
-        return Response(json.dumps({}), mimetype="application/json", status=200)
-
-
+        try :
+            postID=int(id)
+            like = LikePost.query.get(id)
+            me_and_my_friend_ids = get_list_of_user_ids_in_my_network(self.current_user.id)
+            if like is None or like.user_id not in me_and_my_friend_ids :
+                error_message = {
+                    'error': 'likes {0} does not exist.'.format(id)
+                }
+                return Response(json.dumps(error_message), mimetype="application/json", status=404)
+            else :
+                LikePost.query.filter_by(id=id).delete()
+                db.session.commit()
+                return Response(json.dumps({}), mimetype="application/json", status=200)
+        except :
+            error_message = {
+                'error': 'like {0} is invalid.'.format(id)
+            }
+            return Response(json.dumps(error_message), mimetype="application/json", status=400)
 
 def initialize_routes(api):
     api.add_resource(

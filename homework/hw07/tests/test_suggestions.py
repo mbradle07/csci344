@@ -26,6 +26,7 @@ class TestSuggestionsEndpoint(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         suggestions = response.json()
         suggestion = suggestions[0]
+        print(suggestion)
         user = utils.get_user(suggestion.get('id'))
 
         self.assertEqual(suggestion.get('id'), user.get('id'))
